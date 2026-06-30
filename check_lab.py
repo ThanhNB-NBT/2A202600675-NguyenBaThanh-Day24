@@ -6,6 +6,9 @@ import os
 import subprocess
 import sys
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 
 def check(label: str, condition: bool, detail: str = "") -> bool:
     icon = "✓" if condition else "✗"
@@ -88,8 +91,9 @@ def main():
 
     # 6. Test suite
     print("\n[6] Test suite:")
+    pytest_cmd = [sys.executable, ".codex_pytest.py", "tests", "-q"] if os.path.exists(".codex_pytest.py") else ["pytest", "tests/", "--tb=short", "-q"]
     result = subprocess.run(
-        ["pytest", "tests/", "--tb=short", "-q"],
+        pytest_cmd,
         capture_output=True, text=True,
     )
     tests_ok = result.returncode == 0

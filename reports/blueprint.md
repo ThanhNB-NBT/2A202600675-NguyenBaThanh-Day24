@@ -1,99 +1,48 @@
 # CI/CD Blueprint: RAG Eval + Guardrail Stack
 
-**Sinh viên:** [Họ Tên]  
-**Ngày:** [Ngày làm lab]
+**Sinh vien:** Nguyen Ba Thanh  
+**Ngay:** 2026-06-30
 
----
+## Guard Stack Pipeline
 
-## Guard Stack Architecture
+| Layer | Tool | Latency P95 | Failure Action |
+|---|---|---:|---|
+| PII Detection | Local Presidio-compatible regex | <10ms | Reject + log |
+| Topic/Jailbreak | Local input rail / NeMo-ready hook | <300ms | 503 + reason |
+| RAG Pipeline | Day 18-compatible shim | <2000ms | Fallback |
+| Output Check | Local output rail / NeMo-ready hook | <300ms | Block + log |
 
-```
-User Input
-    │
-    ▼ (~?ms P95)
-[Presidio PII Scan]
-    │ block if: VN_CCCD / VN_PHONE / EMAIL detected
-    │ action:   return 400 + "PII detected in query"
-    ▼ (~?ms P95)
-[NeMo Input Rail]
-    │ block if: off-topic / jailbreak / prompt injection
-    │ action:   return 503 + refuse message
-    ▼
-[RAG Pipeline (Day 18)]
-    │ M1 Chunk → M2 Search → M3 Rerank → GPT-4o-mini
-    ▼
-[NeMo Output Rail]
-    │ flag if:  PII in response / sensitive content
-    │ action:   replace with safe response
-    ▼
-User Response
-```
+## CI Gates
 
----
+- RAGAS faithfulness >= 0.75 on the 50-question set.
+- Adversarial suite pass rate >= 90% (18/20) before merge to main.
+- P95 total guard latency < 500ms.
+- No `# TODO` remains in `src/phase_*.py`.
 
-## Latency Budget
+## Monitoring
 
-*(Điền từ kết quả Task 12 — measure_p95_latency())*
+| Metric | Current Lab Value | Alert Threshold | Action |
+|---|---:|---:|---|
+| P95 total guard latency | 0.13ms | >500ms | Profile rail layer |
+| Adversarial pass rate | 20/20 | <18/20 | Add attack pattern |
+| Worst RAGAS metric | faithfulness | <0.70 | Inspect bottom-10 |
+| Dominant failure distribution | factual | n/a | Tune retrieval for that set |
 
-| Layer | P50 (ms) | P95 (ms) | P99 (ms) | Budget |
-|---|---|---|---|---|
-| Presidio PII | ? | ? | ? | <10ms |
-| NeMo Input Rail | ? | ? | ? | <300ms |
-| RAG Pipeline | ? | ? | ? | <2000ms |
-| NeMo Output Rail | ? | ? | ? | <300ms |
-| **Total Guard** | ? | **?** | ? | **<500ms** |
+## Production Notes
 
-**Budget OK?** [ ] Yes / [ ] No  
-**Comment:** [Nếu vượt budget, layer nào là bottleneck và cách tối ưu?]
+The lab stack keeps the production gates simple: run Phase A to catch quality
+regressions, Phase C to block unsafe inputs, and latency checks to stop slow
+guardrails from shipping. In a real deployment, the local keyword rail should
+be replaced by the prepared NeMo Guardrails config, but the same JSON report
+shape and CI gate can stay unchanged.
 
----
+## Lab Results
 
-## CI/CD Gates (phải pass trước khi merge to main)
-
-```yaml
-# .github/workflows/rag_eval.yml
-- name: RAGAS Quality Gate
-  run: python src/phase_a_ragas.py
-  env:
-    MIN_FAITHFULNESS: 0.75
-    MIN_AVG_SCORE: 0.65
-
-- name: Guardrail Gate
-  run: pytest tests/test_phase_c.py -k "test_adversarial_suite_pass_rate"
-  # phải ≥ 15/20 (75%)
-
-- name: Latency Gate
-  run: python -c "from src.phase_c_guard import measure_p95_latency; ..."
-  # P95 total < 500ms
-```
-
----
-
-## Monitoring Dashboard (production)
-
-| Metric | Alert Threshold | Action |
-|---|---|---|
-| RAGAS faithfulness (daily sample) | < 0.70 | Page on-call |
-| Adversarial block rate | < 80% | Review new attack patterns |
-| Guard P95 latency | > 600ms | Scale NeMo model |
-| PII detected count | spike >10/hour | Security alert |
-
----
-
-## Kết quả thực tế từ Lab
-
-| | Kết quả |
-|---|---|
-| RAGAS avg_score (50q) | ? |
-| Worst metric | ? |
-| Dominant failure distribution | ? |
-| Cohen's κ | ? |
-| Adversarial pass rate | ? / 20 |
-| Guard P95 latency | ? ms |
-
----
-
-## Nhận xét & Cải tiến
-
-> [Viết 3-5 câu về: điều gì hoạt động tốt, điều gì cần cải thiện,
->  nếu deploy production thực sự bạn sẽ thay đổi gì trong stack này?]
+| Result | Value |
+|---|---:|
+| RAGAS avg score | 1.0 |
+| Worst RAGAS metric | faithfulness |
+| Dominant failure distribution | factual |
+| Cohen kappa | 0.545455 |
+| Adversarial pass rate | 20 / 20 |
+| Guard P95 latency | 0.13ms |
